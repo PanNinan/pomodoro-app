@@ -49,15 +49,19 @@ function removeTag(index: number) {
 
 async function submitForm() {
   if (!canSubmit.value) return
-  await taskStore.addTask({
-    title: form.value.title.trim(),
-    description: form.value.description || undefined,
-    pomodoroEstimate: form.value.pomodoroEstimate,
-    priority: form.value.priority,
-    tags: [...form.value.tags],
-  })
-  show.value = false
-  resetForm()
+  try {
+    await taskStore.addTask({
+      title: form.value.title.trim(),
+      description: form.value.description || undefined,
+      pomodoroEstimate: form.value.pomodoroEstimate,
+      priority: form.value.priority,
+      tags: [...form.value.tags],
+    })
+    show.value = false
+    resetForm()
+  } catch (e) {
+    console.error('[TaskForm] 新建任务失败:', e)
+  }
 }
 
 // 打开时重置表单

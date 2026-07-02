@@ -9,9 +9,6 @@ permissions:
   contents: write
 
 jobs:
-  # ============================================================
-  # Build Tauri desktop app for all platforms
-  # ============================================================
   build-tauri:
     name: Build (${{ matrix.platform }})
     runs-on: ${{ matrix.os }}
@@ -29,7 +26,7 @@ jobs:
             os: macos-latest
             target: aarch64-apple-darwin
           - platform: linux-x64
-            os: ubuntu-latest
+            os: ubuntu-22.04
             target: x86_64-unknown-linux-gnu
 
     steps:
@@ -68,27 +65,20 @@ jobs:
             libsoup-3.0-dev \
             libjavascriptcoregtk-4.1-dev
 
-      # ---- macOS codesign env (placeholder — add secrets later) ----
-      # - name: Import Apple certificate
-      #   if: runner.os == 'macOS'
-      #   uses: apple-actions/import-codesign-certs@v2
-      #   with:
-      #     p12-file-base64: ${{ secrets.APPLE_CERTIFICATE }}
-      #     p12-password: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      # ---- macOS system deps ----
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          rustup target add ${{ matrix.target }}
 
       # ---- Build ----
       - name: Build Tauri
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          # APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          # APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          # APPLE_ID: ${{ secrets.APPLE_ID }}
-          # APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          # APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # 签名密钥可选 — 未配置时跳过签名
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         with:
           tagName: ${{ github.ref_name }}
           releaseName: '🍅 番茄时钟 v__VERSION__'
@@ -97,9 +87,6 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.target }}
 
-  # ============================================================
-  # Build Web version & deploy to GitHub Pages (optional)
-  # ============================================================
   build-web:
     name: Build Web
     runs-on: ubuntu-latest
@@ -123,27 +110,3 @@ jobs:
         with:
           name: web-dist
           path: dist/
-
-  # ---- Optional: Deploy Web to GitHub Pages ----
-  # Uncomment to enable:
-  # deploy-pages:
-  #   needs: build-web
-  #   if: github.ref_type == 'tag'
-  #   runs-on: ubuntu-latest
-  #   permissions:
-  #     pages: write
-  #     id-token: write
-  #   environment:
-  #     name: github-pages
-  #     url: ${{ steps.deployment.outputs.page_url }}
-  #   steps:
-  #     - uses: actions/download-artifact@v4
-  #       with:
-  #         name: web-dist
-  #         path: dist/
-  #     - uses: actions/configure-pages@v4
-  #     - uses: actions/upload-pages-artifact@v3
-  #       with:
-  #         path: dist/
-  #     - id: deployment
-  #       uses: actions/deploy-pages@v4
