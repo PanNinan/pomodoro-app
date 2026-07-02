@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import TimerRing from '@/components/timer/TimerRing.vue'
 import TimerDisplay from '@/components/timer/TimerDisplay.vue'
 import TimerControls from '@/components/timer/TimerControls.vue'
@@ -16,6 +16,8 @@ const { registerShortcuts, unregisterShortcuts } = useGlobalShortcut()
 const taskStore = useTaskStore()
 const statsStore = useStatsStore()
 
+const showDrawer = ref(false)
+
 // 注册番茄完成/休息结束回调（记录 + 通知）
 usePomodoroComplete()
 
@@ -23,48 +25,51 @@ usePomodoroComplete()
 function selectTask(taskId: string | null) {
   taskStore.setCurrentTask(taskId)
   setTimerTask(taskId)
+  showDrawer.value = false
 }
 
 // 托盘快捷操作回调
 function handleStartPause() {
   const s = status.value
-  if (s === 'idle' || s === 'break_idle') {
-    start()
-  } else if (s === 'running' || s === 'break_running') {
-    pause()
-  } else if (s === 'paused' || s === 'break_paused') {
-    resume()
-  }
+  if (s === 'idle' || s === 'break_idle') start()
+  else if (s === 'running' || s === 'break_running') pause()
+  else if (s === 'paused' || s === 'break_paused') resume()
 }
 
 onMounted(async () => {
   await initNotification()
   await taskStore.loadTasks()
   await statsStore.loadRecords()
-
-  await registerShortcuts({
-    onStartPause: handleStartPause,
-    onReset: () => reset(),
-  })
-
+  await registerShortcuts({ onStartPause: handleStartPause, onReset: () => reset() })
   ;(window as any).__tauriStartTimer = () => start()
   ;(window as any).__tauriPauseTimer = () => pause()
 })
 
-onUnmounted(async () => {
-  await unregisterShortcuts()
-})
+onUnmounted(async () => { await unregisterShortcuts() })
 </script>
 
 <template>
   <div class="timer-view">
     <div class="timer-view__center">
-      <div v-if="taskStore.activeTask" class="timer-view__task-tag">
-        <n-tag size="small" type="info" :bordered="false">
-          📋 {{ taskStore.activeTask.title }}
-        </n-tag>
+      <!-- 当前任务 -->
+      <div
+        class="timer-view__active-task"
+        :class="{ 'timer-view__active-task--has': taskStore.activeTask }"
+        @click="showDrawer = true"
+      >
+        <template v-if="taskStore.activeTask">
+          <span class="timer-view__active-dot" />
+          <span>{{ taskStore.activeTask.title }}</span>
+          <span class="timer-view__active-count">
+            {{ taskStore.activeTask.pomodoroActual }}/{{ taskStore.activeTask.pomodoroEstimate }} 🍅
+          </span>
+        </template>
+        <template v-else>
+          <span>📋 选择任务...</span>
+        </template>
       </div>
 
+      <!-- 计时器 -->
       <TimerRing :size="300" :stroke-width="10">
         <TimerDisplay />
       </TimerRing>
@@ -78,28 +83,53 @@ onUnmounted(async () => {
       </div>
     </div>
 
-    <div class="timer-view__tasks">
-      <div class="timer-view__tasks-header">
-        <span>快速选择任务</span>
-      </div>
-      <div class="timer-view__tasks-list">
-        <div
-          v-for="task in taskStore.doingTasks.slice(0, 5)"
-          :key="task.id"
-          class="timer-view__task-item"
-          :class="{ 'timer-view__task-item--active': taskStore.currentTaskId === task.id }"
-          @click="selectTask(taskStore.currentTaskId === task.id ? null : task.id)"
-        >
-          <span class="timer-view__task-title">{{ task.title }}</span>
-          <span class="timer-view__task-count">
-            {{ task.pomodoroActual }}/{{ task.pomodoroEstimate }} 🍅
-          </span>
+    <!-- 右侧抽屉 — 任务选择 -->
+    <n-drawer v-model:show="showDrawer" :width="320" placement="right">
+      <n-drawer-content title="选择任务" closable>
+        <!-- 进行中 -->
+        <div class="drawer__section">
+          <div class="drawer__section-title">进行中</div>
+          <div
+            v-for="task in taskStore.doingTasks"
+            :key="task.id"
+            class="drawer__item"
+            :class="{ 'drawer__item--active': taskStore.currentTaskId === task.id }"
+            @click="selectTask(task.id)"
+          >
+            <div class="drawer__item-left">
+              <span class="drawer__item-dot" />
+              <span class="drawer__item-title">{{ task.title }}</span>
+            </div>
+            <span class="drawer__item-count">
+              {{ task.pomodoroActual }}/{{ task.pomodoroEstimate }}
+            </span>
+          </div>
+          <div v-if="!taskStore.doingTasks.length" class="drawer__empty">暂无进行中的任务</div>
         </div>
-        <div v-if="taskStore.doingTasks.length === 0" class="timer-view__empty">
-          暂无进行中的任务
+
+        <!-- 待办 -->
+        <div class="drawer__section">
+          <div class="drawer__section-title">待办</div>
+          <div
+            v-for="task in taskStore.todoTasks.slice(0, 10)"
+            :key="task.id"
+            class="drawer__item"
+            @click="selectTask(task.id)"
+          >
+            <div class="drawer__item-left">
+              <span class="drawer__item-title">{{ task.title }}</span>
+            </div>
+            <span class="drawer__item-count">🍅{{ task.pomodoroEstimate }}</span>
+          </div>
+          <div v-if="!taskStore.todoTasks.length" class="drawer__empty">暂无待办任务</div>
         </div>
-      </div>
-    </div>
+
+        <!-- 取消选择 -->
+        <div v-if="taskStore.currentTaskId" class="drawer__clear" @click="selectTask(null)">
+          取消当前任务选择
+        </div>
+      </n-drawer-content>
+    </n-drawer>
   </div>
 </template>
 
@@ -108,7 +138,7 @@ onUnmounted(async () => {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 40px;
+  gap: 32px;
   max-width: 500px;
   margin: 0 auto;
   padding-top: 40px;
@@ -120,8 +150,45 @@ onUnmounted(async () => {
   align-items: center;
 }
 
-.timer-view__task-tag {
+/* 当前任务按钮 */
+.timer-view__active-task {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 20px;
+  border-radius: 24px;
+  border: 1px dashed var(--n-border-color);
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--n-text-color-3);
   margin-bottom: 24px;
+  transition: all 0.2s;
+  user-select: none;
+}
+
+.timer-view__active-task:hover {
+  border-color: var(--n-primary-color);
+  color: var(--n-text-color);
+}
+
+.timer-view__active-task--has {
+  border-style: solid;
+  border-color: var(--n-primary-color);
+  color: var(--n-text-color);
+  background-color: rgba(231, 76, 60, 0.04);
+}
+
+.timer-view__active-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: var(--n-primary-color);
+  flex-shrink: 0;
+}
+
+.timer-view__active-count {
+  font-size: 12px;
+  color: var(--n-text-color-3);
 }
 
 .timer-view__shortcuts {
@@ -129,56 +196,85 @@ onUnmounted(async () => {
   opacity: 0.6;
 }
 
-.timer-view__tasks {
-  width: 100%;
+/* 抽屉样式 */
+.drawer__section {
+  margin-bottom: 20px;
 }
 
-.timer-view__tasks-header {
-  font-size: 14px;
+.drawer__section-title {
+  font-size: 12px;
   color: var(--n-text-color-3);
-  margin-bottom: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 8px;
+  padding: 0 4px;
 }
 
-.timer-view__tasks-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.timer-view__task-item {
+.drawer__item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 16px;
+  padding: 10px 12px;
   border-radius: 8px;
-  border: 1px solid var(--n-border-color);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.15s;
 }
 
-.timer-view__task-item:hover {
-  border-color: var(--n-primary-color);
+.drawer__item:hover {
+  background-color: var(--n-button-color-hover);
 }
 
-.timer-view__task-item--active {
-  border-color: var(--n-primary-color);
-  background-color: var(--n-primary-color-hover);
+.drawer__item--active {
+  background-color: rgba(231, 76, 60, 0.08);
+  border-left: 3px solid var(--n-primary-color);
 }
 
-.timer-view__task-title {
+.drawer__item-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.drawer__item-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: var(--n-primary-color);
+  flex-shrink: 0;
+}
+
+.drawer__item-title {
   font-size: 14px;
-  color: var(--n-text-color);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.timer-view__task-count {
+.drawer__item-count {
+  font-size: 12px;
+  color: var(--n-text-color-3);
+  flex-shrink: 0;
+  margin-left: 8px;
+}
+
+.drawer__empty {
   font-size: 13px;
   color: var(--n-text-color-3);
+  padding: 12px 4px;
 }
 
-.timer-view__empty {
+.drawer__clear {
   text-align: center;
-  padding: 24px;
+  padding: 12px;
+  font-size: 13px;
   color: var(--n-text-color-3);
-  font-size: 14px;
+  cursor: pointer;
+  border-top: 1px solid var(--n-border-color);
+  margin-top: 8px;
+}
+
+.drawer__clear:hover {
+  color: var(--n-primary-color);
 }
 </style>

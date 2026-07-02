@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { ref, computed, readonly, toRaw } from 'vue'
+import { ref, computed, watch, readonly, toRaw } from 'vue'
 import type { PomodoroRecord, DailyStats } from '@/types'
 import { storage } from '@/storage'
 import { generateId } from '@/utils/uuid'
@@ -7,19 +7,40 @@ import { today } from '@/utils/date'
 import { format, subDays, startOfWeek, endOfWeek, eachDayOfInterval, startOfMonth, endOfMonth, eachWeekOfInterval } from 'date-fns'
 
 const TABLE = 'records'
+let _loaded = false // 避免重复从 DB 加载
 
 export const useStatsStore = defineStore('stats', () => {
   const records = ref<PomodoroRecord[]>([])
   const loading = ref(false)
 
-  // 从数据库加载记录
+  // ─── 预计算索引：按日期分组 ───
+  // records 变化时自动重建，后续 getDailyStats 直接 O(1) 查表
+  const dateIndex = ref<Map<string, { all: PomodoroRecord[]; completed: PomodoroRecord[] }>>(new Map())
+
+  function rebuildDateIndex() {
+    const map = new Map<string, { all: PomodoroRecord[]; completed: PomodoroRecord[] }>()
+    for (const r of records.value) {
+      const date = format(new Date(r.startedAt), 'yyyy-MM-dd')
+      if (!map.has(date)) map.set(date, { all: [], completed: [] })
+      const entry = map.get(date)!
+      entry.all.push(r)
+      if (r.completed) entry.completed.push(r)
+    }
+    dateIndex.value = map
+  }
+
+  // records 变化时自动重建索引
+  watch(records, rebuildDateIndex, { immediate: true })
+
+  // ─── 从数据库加载（只加载一次） ───
   async function loadRecords(): Promise<void> {
+    if (_loaded && records.value.length > 0) return
     loading.value = true
     try {
       const data = await storage.getAllSorted<PomodoroRecord>(TABLE, 'startedAt', true)
-      console.log('[StatsStore] loadRecords 从 DB 读取:', data.length, '条，内存:', records.value.length, '条')
       if (data.length > 0) {
         records.value = data
+        _loaded = true
       }
     } catch (e) {
       console.error('[StatsStore] loadRecords 失败:', e)
@@ -28,17 +49,17 @@ export const useStatsStore = defineStore('stats', () => {
     }
   }
 
-  // 添加记录
-  async function addRecord(
-    data: Omit<PomodoroRecord, 'id'>
-  ): Promise<PomodoroRecord> {
-    const record: PomodoroRecord = {
-      id: generateId(),
-      ...data,
-    }
-    // 先写入内存（保证当前会话可用）
+  // ─── 清除所有记录 ───
+  async function clearRecords(): Promise<void> {
+    await storage.clear(TABLE)
+    records.value = []
+    _loaded = true
+  }
+
+  // ─── 添加记录 ───
+  async function addRecord(data: Omit<PomodoroRecord, 'id'>): Promise<PomodoroRecord> {
+    const record: PomodoroRecord = { id: generateId(), ...data }
     records.value.unshift(record)
-    // 再持久化到数据库
     try {
       await storage.insert(TABLE, toRaw(record))
     } catch (e) {
@@ -47,116 +68,93 @@ export const useStatsStore = defineStore('stats', () => {
     return record
   }
 
-  // 获取指定日期的统计
+  // ─── 获取指定日期统计（O(1) 查表） ───
   function getDailyStats(date: string): DailyStats {
-    const dayRecords = records.value.filter(
-      (r) => format(new Date(r.startedAt), 'yyyy-MM-dd') === date
-    )
-    const completedRecords = dayRecords.filter((r) => r.completed)
-    if (date === today()) {
-      console.log('[StatsStore] getDailyStats today:', date, '总记录:', records.value.length, '今日:', dayRecords.length, '已完成:', completedRecords.length)
-    }
+    const entry = dateIndex.value.get(date)
+    if (!entry) return { date, pomodoroCount: 0, totalMinutes: 0, completedTasks: 0 }
     const totalMinutes = Math.round(
-      completedRecords.reduce((sum, r) => sum + r.duration, 0) / 60
+      entry.completed.reduce((sum, r) => sum + r.duration, 0) / 60
     )
-    return {
-      date,
-      pomodoroCount: completedRecords.length,
-      totalMinutes,
-      completedTasks: 0,
-    }
+    return { date, pomodoroCount: entry.completed.length, totalMinutes, completedTasks: 0 }
   }
 
-  // 今日统计
+  // ─── 今日统计 ───
   const todayStats = computed(() => getDailyStats(today()))
 
-  // 本周统计
+  // ─── 本周统计 ───
   function getWeeklyStats(startDate: Date): DailyStats[] {
-    const weekStart = startOfWeek(startDate, { weekStartsOn: 1 })
-    const weekEnd = endOfWeek(startDate, { weekStartsOn: 1 })
-    const days = eachDayOfInterval({ start: weekStart, end: weekEnd })
-    return days.map((day) => getDailyStats(format(day, 'yyyy-MM-dd')))
+    const days = eachDayOfInterval({
+      start: startOfWeek(startDate, { weekStartsOn: 1 }),
+      end: endOfWeek(startDate, { weekStartsOn: 1 }),
+    })
+    return days.map((d) => getDailyStats(format(d, 'yyyy-MM-dd')))
   }
 
-  // 月度统计 — 按周汇总
-  function getMonthlyStats(year: number, month: number): { weeks: string[]; pomodoros: number[]; minutes: number[] } {
+  // ─── 月度统计 ───
+  function getMonthlyStats(year: number, month: number) {
     const monthStart = startOfMonth(new Date(year, month - 1))
     const monthEnd = endOfMonth(monthStart)
     const weeks = eachWeekOfInterval({ start: monthStart, end: monthEnd }, { weekStartsOn: 1 })
 
     const result = { weeks: [] as string[], pomodoros: [] as number[], minutes: [] as number[] }
-
-    for (const weekStart of weeks) {
-      const weekEnd2 = endOfWeek(weekStart, { weekStartsOn: 1 })
-      const days = eachDayOfInterval({ start: weekStart, end: weekEnd2 })
-      let totalPomodoros = 0
-      let totalMinutes = 0
+    for (let i = 0; i < weeks.length; i++) {
+      const days = eachDayOfInterval({ start: weeks[i], end: endOfWeek(weeks[i], { weekStartsOn: 1 }) })
+      let totalP = 0, totalM = 0
       for (const day of days) {
-        const stats = getDailyStats(format(day, 'yyyy-MM-dd'))
-        totalPomodoros += stats.pomodoroCount
-        totalMinutes += stats.totalMinutes
+        const s = getDailyStats(format(day, 'yyyy-MM-dd'))
+        totalP += s.pomodoroCount
+        totalM += s.totalMinutes
       }
-      result.weeks.push(`第${weeks.indexOf(weekStart) + 1}周`)
-      result.pomodoros.push(totalPomodoros)
-      result.minutes.push(totalMinutes)
+      result.weeks.push(`第${i + 1}周`)
+      result.pomodoros.push(totalP)
+      result.minutes.push(totalM)
     }
-
     return result
   }
 
-  // 连续专注天数
+  // ─── 连续专注天数 ───
   const streak = computed(() => {
     let count = 0
-    let checkDate = new Date()
+    const d = new Date()
     while (true) {
-      const dateStr = format(checkDate, 'yyyy-MM-dd')
-      const stats = getDailyStats(dateStr)
-      if (stats.pomodoroCount === 0) break
+      const entry = dateIndex.value.get(format(d, 'yyyy-MM-dd'))
+      if (!entry || entry.completed.length === 0) break
       count++
-      checkDate = subDays(checkDate, 1)
+      d.setDate(d.getDate() - 1)
     }
     return count
   })
 
-  // 趋势数据（最近 N 天）
-  function getTrendData(days: number = 7): { dates: string[]; minutes: number[] } {
-    const result: { dates: string[]; minutes: number[] } = { dates: [], minutes: [] }
+  // ─── 趋势数据 ───
+  function getTrendData(days: number = 7) {
+    const result = { dates: [] as string[], minutes: [] as number[] }
     for (let i = days - 1; i >= 0; i--) {
-      const date = format(subDays(new Date(), i), 'yyyy-MM-dd')
-      const stats = getDailyStats(date)
-      result.dates.push(format(subDays(new Date(), i), 'MM/dd'))
-      result.minutes.push(stats.totalMinutes)
+      const d = subDays(new Date(), i)
+      result.dates.push(format(d, 'MM/dd'))
+      result.minutes.push(getDailyStats(format(d, 'yyyy-MM-dd')).totalMinutes)
     }
     return result
   }
 
-  // 标签分布 — 按任务去重，每个标签统计的是"有多少个任务使用了该标签"
+  // ─── 标签分布 ───
   const tagDistribution = computed(() => {
-    const tagged = records.value.filter((r) => r.completed && r.tag && r.taskId)
-    console.log('[StatsStore] tagDistribution: 总记录', records.value.length, '有标签:', tagged.length)
-    if (records.value.length > 0 && records.value.length < 5) {
-      records.value.forEach((r, i) => console.log(`  记录${i}:`, JSON.stringify(r)))
-    }
     const tagTaskMap = new Map<string, Set<string>>()
-    tagged
-      .forEach((r) => {
-        const tag = r.tag!
-        if (!tagTaskMap.has(tag)) tagTaskMap.set(tag, new Set())
-        tagTaskMap.get(tag)!.add(r.taskId!)
-      })
-    return Array.from(tagTaskMap.entries()).map(([name, taskIds]) => ({
-      name,
-      value: taskIds.size,
-    }))
+    for (const r of records.value) {
+      if (r.completed && r.tag && r.taskId) {
+        if (!tagTaskMap.has(r.tag)) tagTaskMap.set(r.tag, new Set())
+        tagTaskMap.get(r.tag)!.add(r.taskId)
+      }
+    }
+    return Array.from(tagTaskMap.entries()).map(([name, set]) => ({ name, value: set.size }))
   })
 
-  // 打卡热力图数据（最近 365 天）
+  // ─── 热力图数据（用 dateIndex O(1) 查表） ───
   const heatmapData = computed(() => {
     const result: [string, number][] = []
     for (let i = 364; i >= 0; i--) {
       const date = format(subDays(new Date(), i), 'yyyy-MM-dd')
-      const stats = getDailyStats(date)
-      result.push([date, stats.pomodoroCount])
+      const entry = dateIndex.value.get(date)
+      result.push([date, entry ? entry.completed.length : 0])
     }
     return result
   })
@@ -169,6 +167,7 @@ export const useStatsStore = defineStore('stats', () => {
     tagDistribution,
     heatmapData,
     loadRecords,
+    clearRecords,
     addRecord,
     getDailyStats,
     getWeeklyStats,

@@ -133,9 +133,16 @@ function generateRecords(tasks: Task[]): PomodoroRecord[] {
 // ─── 主函数 ───
 
 /**
- * 填充一年的测试数据
+ * 填充一年的测试数据（已有数据时跳过）
  */
 export async function seedTestData(): Promise<{ tasks: number; records: number }> {
+  // 检查是否已有数据
+  const existing = await storage.getAllSorted('records', 'startedAt')
+  if (existing.length > 0) {
+    console.log(`[Seed] 已有 ${existing.length} 条记录，跳过填充。如需重新生成请先执行 __clearAllData()`)
+    return { tasks: 0, records: 0 }
+  }
+
   console.log('[Seed] 开始生成测试数据...')
 
   const tasks = generateTasks()
@@ -173,8 +180,15 @@ export async function clearAllData(): Promise<void> {
   console.log('[Seed] 🗑️ 所有数据已清除')
 }
 
-// 暴露到全局
-if (typeof window !== 'undefined') {
-  (window as any).__seedData = seedTestData
-  (window as any).__clearAllData = clearAllData
+// ─── 手动激活（控制台调用） ───
+// 用法：
+//   1. 在控制台执行: import('@/utils/seed').then(m => m.activateSeed())
+//   2. 然后: await __seedData() 或 await __clearAllData()
+
+export function activateSeed(): void {
+  if (typeof window !== 'undefined') {
+    (window as any).__seedData = seedTestData
+    (window as any).__clearAllData = clearAllData
+    console.log('[Seed] ✅ 已激活。可用命令: __seedData() / __clearAllData()')
+  }
 }

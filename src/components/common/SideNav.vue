@@ -40,6 +40,9 @@ const { isDark, toggle } = useTheme()
 .side-nav {
   width: 200px;
   height: 100vh;
+  position: sticky;
+  top: 0;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   background-color: var(--n-color);

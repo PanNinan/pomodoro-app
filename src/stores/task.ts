@@ -77,6 +77,13 @@ export const useTaskStore = defineStore('task', () => {
     return task
   }
 
+  // 清除所有任务
+  async function clearTasks(): Promise<void> {
+    await storage.clear(TABLE)
+    tasks.value = []
+    currentTaskId.value = null
+  }
+
   // 更新任务
   async function updateTask(id: string, updates: Partial<Task>): Promise<void> {
     await storage.updateById(TABLE, id, toRaw(updates) as Record<string, unknown>)
@@ -152,6 +159,7 @@ export const useTaskStore = defineStore('task', () => {
     doneTasks,
     taskStats,
     loadTasks,
+    clearTasks,
     addTask,
     updateTask,
     deleteTask,

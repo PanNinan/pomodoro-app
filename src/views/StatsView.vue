@@ -11,6 +11,7 @@ import {
   VisualMapComponent,
 } from 'echarts/components'
 import { useStatsStore } from '@/stores/stats'
+import { useSettings } from '@/composables/useSettings'
 import StatsSummary from '@/components/stats/StatsSummary.vue'
 import TrendChart from '@/components/stats/TrendChart.vue'
 import TagPieChart from '@/components/stats/TagPieChart.vue'
@@ -30,6 +31,7 @@ use([
 ])
 
 const statsStore = useStatsStore()
+const { settings: uiSettings } = useSettings()
 const activeTab = ref('overview')
 
 onMounted(() => {
@@ -53,7 +55,7 @@ onMounted(() => {
     <StatsSummary />
 
     <!-- 打卡日历 -->
-    <div class="stats-view__section">
+    <div v-if="uiSettings.showCalendar" class="stats-view__section">
       <h3>打卡日历</h3>
       <CalendarHeatmap />
     </div>

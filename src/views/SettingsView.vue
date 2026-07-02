@@ -5,6 +5,8 @@ import { useNotification } from '@/composables/useNotification'
 import { useTheme } from '@/composables/useTheme'
 import { useStatsStore } from '@/stores/stats'
 import { useTaskStore } from '@/stores/task'
+import { useSettings } from '@/composables/useSettings'
+import { seedTestData, clearAllData } from '@/utils/seed'
 import { secondsToMinutes, minutesToSeconds } from '@/utils/time'
 import { isTauri } from '@/utils/platform'
 
@@ -13,6 +15,7 @@ const { requestPermission, permission, isDesktop } = useNotification()
 const { mode: themeMode, setMode } = useTheme()
 const statsStore = useStatsStore()
 const taskStore = useTaskStore()
+const { settings: uiSettings, updateSetting } = useSettings()
 
 // 本地编辑用的分钟数
 const focusMinutes = ref(secondsToMinutes(config.value.focusDuration))
@@ -22,6 +25,10 @@ const longBreakInterval = ref(config.value.longBreakInterval)
 const autoStartBreak = ref(config.value.autoStartBreak)
 const autoStartPomodoro = ref(config.value.autoStartPomodoro)
 const soundEnabled = ref(config.value.soundEnabled)
+
+// 演示模式
+const demoMode = ref(false)
+const demoLoading = ref(false)
 
 // 主题选项
 const themeOptions = [
@@ -52,15 +59,33 @@ async function handleRequestPermission() {
 }
 
 async function handleClearRecords() {
-  const { storage } = await import('@/storage')
-  await storage.clear('records')
-  await statsStore.loadRecords()
+  await statsStore.clearRecords()
 }
 
 async function handleClearTasks() {
-  const { storage } = await import('@/storage')
-  await storage.clear('tasks')
-  await taskStore.loadTasks()
+  await taskStore.clearTasks()
+}
+
+async function handleDemoMode(value: boolean) {
+  demoLoading.value = true
+  try {
+    if (value) {
+      const result = await seedTestData()
+      if (result.records > 0) {
+        await statsStore.loadRecords()
+        await taskStore.loadTasks()
+      }
+    } else {
+      await clearAllData()
+      await statsStore.clearRecords()
+      await taskStore.clearTasks()
+    }
+  } catch (e) {
+    console.error('[DemoMode] 操作失败:', e)
+    demoMode.value = !value // 回滚开关状态
+  } finally {
+    demoLoading.value = false
+  }
 }
 </script>
 
@@ -119,6 +144,17 @@ async function handleClearTasks() {
             />
           </n-radio-group>
         </n-form-item>
+        <n-form-item label="打卡日历">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <n-switch
+              :value="uiSettings.showCalendar"
+              @update:value="(v: boolean) => updateSetting('showCalendar', v)"
+            />
+            <span style="color: var(--n-text-color-3); font-size: 13px;">
+              关闭后统计页不再渲染日历热力图
+            </span>
+          </div>
+        </n-form-item>
       </n-form>
     </n-card>
 
@@ -166,6 +202,20 @@ async function handleClearTasks() {
     <!-- 数据管理 -->
     <n-card title="🗂️ 数据管理" size="small" class="settings-view__card">
       <n-form label-placement="left" label-width="120">
+        <!-- 演示模式 -->
+        <n-form-item label="演示模式">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <n-switch
+              v-model:value="demoMode"
+              :loading="demoLoading"
+              @update:value="handleDemoMode"
+            />
+            <span style="color: var(--n-text-color-3); font-size: 13px;">
+              {{ demoMode ? '已填充演示数据' : '开启后填充演示数据' }}
+            </span>
+          </div>
+        </n-form-item>
+
         <n-form-item label="番茄记录">
           <div style="display: flex; align-items: center; gap: 12px;">
             <span style="color: var(--n-text-color-3); font-size: 13px;">
@@ -198,7 +248,7 @@ async function handleClearTasks() {
     <!-- 关于 -->
     <n-card title="ℹ️ 关于" size="small" class="settings-view__card">
       <div style="color: var(--n-text-color-3); font-size: 14px;">
-        <p>番茄时钟 v0.1.0</p>
+        <p>番茄时钟 v0.1.3</p>
         <p>基于 Vue 3 + TypeScript + Naive UI + Tauri 构建</p>
       </div>
     </n-card>
