@@ -179,8 +179,8 @@ async function saveEdit() {
                 :key="tag"
                 closable
                 size="small"
-                @close="removeEditTag(i)"
                 style="margin-right: 4px;"
+                @close="removeEditTag(i)"
               >
                 {{ tag }}
               </n-tag>

@@ -38,3 +38,6 @@ src-tauri/icons/*.png
 
 # Test
 coverage/
+
+# Tools
+.workbuddy/

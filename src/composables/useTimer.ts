@@ -18,7 +18,7 @@ let intervalId: ReturnType<typeof setInterval> | null = null
 let lastTick = 0
 
 // 当前番茄开始时间（用于记录）
-let pomodoroStartTime = ''
+let _pomodoroStartTime = ''
 
 // 事件回调
 let onComplete: ((taskId?: string) => void) | null = null
@@ -166,7 +166,7 @@ async function handlePhaseComplete(): Promise<void> {
  * 开始专注
  */
 function start(): void {
-  pomodoroStartTime = nowISO()
+  _pomodoroStartTime = nowISO()
   lastTick = Date.now()
   status.value = 'running'
   intervalId = setInterval(tick, 1000)

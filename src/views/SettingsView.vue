@@ -10,7 +10,7 @@ import { isTauri } from '@/utils/platform'
 
 const { config, updateConfig } = useTimer()
 const { requestPermission, permission, isDesktop } = useNotification()
-const { mode: themeMode, isDark, setMode } = useTheme()
+const { mode: themeMode, setMode } = useTheme()
 const statsStore = useStatsStore()
 const taskStore = useTaskStore()
 

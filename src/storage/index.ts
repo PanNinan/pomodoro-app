@@ -27,6 +27,9 @@ async function initStorage(): Promise<StorageAdapter> {
 export const storage: StorageAdapter = new Proxy({} as StorageAdapter, {
   get(_target, prop: keyof StorageAdapter) {
     return (...args: unknown[]) =>
-      initStorage().then((adapter) => (adapter[prop] as Function).apply(adapter, args))
+      initStorage().then((adapter) => {
+        const fn = adapter[prop] as (...args: unknown[]) => unknown
+        return fn.apply(adapter, args)
+      })
   },
 })

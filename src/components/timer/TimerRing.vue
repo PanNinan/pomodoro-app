@@ -7,7 +7,7 @@ const props = defineProps<{
   strokeWidth?: number
 }>()
 
-const { progress, status, isFocusing, isBreak } = useTimer()
+const { progress, isFocusing, isBreak } = useTimer()
 
 const size = computed(() => props.size ?? 280)
 const strokeWidth = computed(() => props.strokeWidth ?? 8)

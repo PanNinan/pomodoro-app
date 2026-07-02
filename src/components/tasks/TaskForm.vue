@@ -89,8 +89,8 @@ watch(show, (val) => {
               :key="tag"
               closable
               size="small"
-              @close="removeTag(i)"
               style="margin-right: 4px;"
+              @close="removeTag(i)"
             >
               {{ tag }}
             </n-tag>

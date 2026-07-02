@@ -28,7 +28,7 @@ const { isDark, toggle } = useTheme()
     </div>
 
     <div class="side-nav__footer">
-      <button class="side-nav__theme-btn" @click="toggle" :title="isDark ? '切换到浅色' : '切换到深色'">
+      <button class="side-nav__theme-btn" :title="isDark ? '切换到浅色' : '切换到深色'" @click="toggle">
         <span v-if="isDark">☀️</span>
         <span v-else>🌙</span>
       </button>
