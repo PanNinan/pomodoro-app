@@ -90,6 +90,7 @@ export const sqliteAdapter: StorageAdapter = {
     const placeholders = keys.map((_, i) => `$${i + 1}`)
     const values = keys.map((k) => {
       const v = data[k]
+      if (typeof v === 'boolean') return v ? 1 : 0
       if (Array.isArray(v)) return JSON.stringify(v)
       if (v === undefined || v === null) return null
       return v
@@ -112,6 +113,7 @@ export const sqliteAdapter: StorageAdapter = {
     })
     const values = keys.map((k) => {
       const v = updates[k]
+      if (typeof v === 'boolean') return v ? 1 : 0
       if (Array.isArray(v)) return JSON.stringify(v)
       if (v === undefined || v === null) return null
       return v
@@ -146,9 +148,10 @@ export const sqliteAdapter: StorageAdapter = {
       if (typeof row.tags === 'string') {
         try { row.tags = JSON.parse(row.tags as string) } catch { row.tags = [] }
       }
-      // completed 字段 0/1 → boolean
+      // completed 字段 → boolean（兼容旧数据 "true" 字符串和新数据 1/0 整数）
       if ('completed' in row) {
-        row.completed = row.completed === 1 || row.completed === true
+        const raw = row.completed
+        row.completed = raw === 1 || raw === '1' || raw === true || raw === 'true'
       }
       return row as T
     })

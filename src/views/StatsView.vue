@@ -41,6 +41,14 @@ onMounted(() => {
   <div class="stats-view">
     <h1>专注统计</h1>
 
+    <!-- 调试：数据状态 -->
+    <n-tag v-if="statsStore.records.length === 0" type="warning" size="small" style="margin-bottom: 16px;">
+      ⚠️ 暂无记录（内存: {{ statsStore.records.length }} 条，加载中: {{ statsStore.loading }}）
+    </n-tag>
+    <n-tag v-else type="success" size="small" style="margin-bottom: 16px;">
+      ✅ 已加载 {{ statsStore.records.length }} 条记录
+    </n-tag>
+
     <!-- 概览卡片 -->
     <StatsSummary />
 

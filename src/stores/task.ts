@@ -39,7 +39,12 @@ export const useTaskStore = defineStore('task', () => {
   async function loadTasks(): Promise<void> {
     loading.value = true
     try {
-      tasks.value = await storage.getAllSorted<Task>(TABLE, 'order')
+      const data = await storage.getAllSorted<Task>(TABLE, 'order')
+      if (data.length > 0) {
+        tasks.value = data
+      }
+    } catch (e) {
+      console.error('[TaskStore] loadTasks 失败:', e)
     } finally {
       loading.value = false
     }
@@ -61,8 +66,14 @@ export const useTaskStore = defineStore('task', () => {
       createdAt: nowISO(),
       order: tasks.value.length,
     }
-    await storage.insert(TABLE, toRaw(task))
+    // 先写入内存
     tasks.value.push(task)
+    // 再持久化
+    try {
+      await storage.insert(TABLE, toRaw(task))
+    } catch (e) {
+      console.error('[TaskStore] addTask 持久化失败:', e)
+    }
     return task
   }
 

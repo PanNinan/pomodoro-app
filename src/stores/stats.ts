@@ -16,7 +16,13 @@ export const useStatsStore = defineStore('stats', () => {
   async function loadRecords(): Promise<void> {
     loading.value = true
     try {
-      records.value = await storage.getAllSorted<PomodoroRecord>(TABLE, 'startedAt', true)
+      const data = await storage.getAllSorted<PomodoroRecord>(TABLE, 'startedAt', true)
+      console.log('[StatsStore] loadRecords 从 DB 读取:', data.length, '条，内存:', records.value.length, '条')
+      if (data.length > 0) {
+        records.value = data
+      }
+    } catch (e) {
+      console.error('[StatsStore] loadRecords 失败:', e)
     } finally {
       loading.value = false
     }
@@ -30,8 +36,14 @@ export const useStatsStore = defineStore('stats', () => {
       id: generateId(),
       ...data,
     }
-    await storage.insert(TABLE, toRaw(record))
+    // 先写入内存（保证当前会话可用）
     records.value.unshift(record)
+    // 再持久化到数据库
+    try {
+      await storage.insert(TABLE, toRaw(record))
+    } catch (e) {
+      console.error('[StatsStore] addRecord 持久化失败:', e)
+    }
     return record
   }
 
@@ -41,6 +53,9 @@ export const useStatsStore = defineStore('stats', () => {
       (r) => format(new Date(r.startedAt), 'yyyy-MM-dd') === date
     )
     const completedRecords = dayRecords.filter((r) => r.completed)
+    if (date === today()) {
+      console.log('[StatsStore] getDailyStats today:', date, '总记录:', records.value.length, '今日:', dayRecords.length, '已完成:', completedRecords.length)
+    }
     const totalMinutes = Math.round(
       completedRecords.reduce((sum, r) => sum + r.duration, 0) / 60
     )
@@ -117,9 +132,13 @@ export const useStatsStore = defineStore('stats', () => {
 
   // 标签分布 — 按任务去重，每个标签统计的是"有多少个任务使用了该标签"
   const tagDistribution = computed(() => {
+    const tagged = records.value.filter((r) => r.completed && r.tag && r.taskId)
+    console.log('[StatsStore] tagDistribution: 总记录', records.value.length, '有标签:', tagged.length)
+    if (records.value.length > 0 && records.value.length < 5) {
+      records.value.forEach((r, i) => console.log(`  记录${i}:`, JSON.stringify(r)))
+    }
     const tagTaskMap = new Map<string, Set<string>>()
-    records.value
-      .filter((r) => r.completed && r.tag && r.taskId)
+    tagged
       .forEach((r) => {
         const tag = r.tag!
         if (!tagTaskMap.has(tag)) tagTaskMap.set(tag, new Set())

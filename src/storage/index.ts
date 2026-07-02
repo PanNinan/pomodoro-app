@@ -3,33 +3,76 @@ import { indexedDBAdapter } from './indexeddb'
 import { isTauri } from '@/utils/platform'
 
 let _adapter: StorageAdapter | null = null
+let _initPromise: Promise<StorageAdapter> | null = null
 
 /**
- * 异步初始化存储适配器（仅首次调用执行，后续返回缓存）
+ * 异步初始化存储适配器（单例，只执行一次）
  */
-async function initStorage(): Promise<StorageAdapter> {
-  if (_adapter) return _adapter
+function initStorage(): Promise<StorageAdapter> {
+  if (_adapter) return Promise.resolve(_adapter)
+  if (_initPromise) return _initPromise
 
-  if (isTauri()) {
-    const { sqliteAdapter } = await import('./sqlite')
-    _adapter = sqliteAdapter
-  } else {
-    _adapter = indexedDBAdapter
-  }
+  _initPromise = (async () => {
+    if (isTauri()) {
+      try {
+        const { sqliteAdapter } = await import('./sqlite')
+        _adapter = sqliteAdapter
+        console.log('[Storage] 使用 SQLite 适配器')
+      } catch (e) {
+        console.error('[Storage] SQLite 加载失败，回退到 IndexedDB:', e)
+        _adapter = indexedDBAdapter
+      }
+    } else {
+      _adapter = indexedDBAdapter
+      console.log('[Storage] 使用 IndexedDB 适配器')
+    }
+    return _adapter
+  })()
 
-  return _adapter
+  return _initPromise
 }
 
 /**
- * 代理对象 — 将所有调用转发给异步初始化后的适配器
- * 外部使用方式不变：storage.get(...) / storage.insert(...) 等
+ * 包装器 — 每个方法显式转发，不使用 Proxy
  */
-export const storage: StorageAdapter = new Proxy({} as StorageAdapter, {
-  get(_target, prop: keyof StorageAdapter) {
-    return (...args: unknown[]) =>
-      initStorage().then((adapter) => {
-        const fn = adapter[prop] as (...args: unknown[]) => unknown
-        return fn.apply(adapter, args)
-      })
+export const storage: StorageAdapter = {
+  async get<T>(table: string, key: string): Promise<T | undefined> {
+    const adapter = await initStorage()
+    return adapter.get<T>(table, key)
   },
-})
+
+  async set<T>(table: string, key: string, value: T): Promise<void> {
+    const adapter = await initStorage()
+    return adapter.set<T>(table, key, value)
+  },
+
+  async delete(table: string, key: string): Promise<void> {
+    const adapter = await initStorage()
+    return adapter.delete(table, key)
+  },
+
+  async insert<T>(table: string, item: T): Promise<void> {
+    const adapter = await initStorage()
+    return adapter.insert<T>(table, item)
+  },
+
+  async updateById(table: string, id: string, updates: Record<string, unknown>): Promise<void> {
+    const adapter = await initStorage()
+    return adapter.updateById(table, id, updates)
+  },
+
+  async deleteById(table: string, id: string): Promise<void> {
+    const adapter = await initStorage()
+    return adapter.deleteById(table, id)
+  },
+
+  async getAllSorted<T>(table: string, sortBy: string, desc?: boolean): Promise<T[]> {
+    const adapter = await initStorage()
+    return adapter.getAllSorted<T>(table, sortBy, desc)
+  },
+
+  async clear(table: string): Promise<void> {
+    const adapter = await initStorage()
+    return adapter.clear(table)
+  },
+}
