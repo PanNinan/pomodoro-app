@@ -1,7 +1,7 @@
 use tauri::{
     menu::{Menu, MenuItem},
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-    Manager,
+    Emitter, Manager,
 };
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -74,6 +74,18 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // 拦截窗口关闭事件 — 弹出选择对话框
+            let window = app.get_webview_window("main").unwrap();
+            let window_clone = window.clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    // 阻止默认关闭行为
+                    api.prevent_close();
+                    // 通知前端显示选择弹窗
+                    let _ = window_clone.emit("close-requested", ());
+                }
+            });
 
             Ok(())
         })

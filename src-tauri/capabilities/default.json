@@ -20,6 +20,10 @@
     "sql:allow-load",
     "sql:allow-execute",
     "sql:allow-select",
-    "sql:allow-close"
+    "sql:allow-close",
+    "core:window:allow-hide",
+    "core:window:allow-destroy",
+    "core:window:allow-close",
+    "core:event:default"
   ]
 }

@@ -2,6 +2,7 @@
 import { onMounted, computed } from 'vue'
 import { darkTheme } from 'naive-ui'
 import AppLayout from '@/components/common/AppLayout.vue'
+import CloseGuard from '@/components/common/CloseGuard.vue'
 import { useTheme } from '@/composables/useTheme'
 
 const { isDark, init: initTheme } = useTheme()
@@ -26,6 +27,7 @@ onMounted(() => {
     <n-message-provider>
       <n-notification-provider>
         <n-dialog-provider>
+          <CloseGuard />
           <n-global-style />
           <AppLayout />
         </n-dialog-provider>

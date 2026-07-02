@@ -9,6 +9,7 @@ declare module 'vue' {
   export interface GlobalComponents {
     AppLayout: typeof import('./components/common/AppLayout.vue')['default']
     CalendarHeatmap: typeof import('./components/stats/CalendarHeatmap.vue')['default']
+    CloseGuard: typeof import('./components/common/CloseGuard.vue')['default']
     EmptyChart: typeof import('./components/common/EmptyChart.vue')['default']
     MonthlyChart: typeof import('./components/stats/MonthlyChart.vue')['default']
     NBadge: typeof import('naive-ui')['NBadge']

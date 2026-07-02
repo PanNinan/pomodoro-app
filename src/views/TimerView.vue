@@ -21,8 +21,14 @@ const showDrawer = ref(false)
 // 注册番茄完成/休息结束回调（记录 + 通知）
 usePomodoroComplete()
 
-// 选择任务 — 同步更新 taskStore 和 timer
+// 选择任务 — 同步更新 taskStore 和 timer，待办任务自动变为进行中
 function selectTask(taskId: string | null) {
+  if (taskId) {
+    const task = taskStore.tasks.find((t) => t.id === taskId)
+    if (task?.status === 'todo') {
+      taskStore.changeStatus(taskId, 'doing')
+    }
+  }
   taskStore.setCurrentTask(taskId)
   setTimerTask(taskId)
   showDrawer.value = false
@@ -125,8 +131,16 @@ onUnmounted(async () => { await unregisterShortcuts() })
         </div>
 
         <!-- 取消选择 -->
-        <div v-if="taskStore.currentTaskId" class="drawer__clear" @click="selectTask(null)">
-          取消当前任务选择
+        <div v-if="taskStore.currentTaskId" class="drawer__clear">
+          <n-button
+            block
+            quaternary
+            type="error"
+            size="small"
+            @click="selectTask(null)"
+          >
+            ✕ 取消当前任务选择
+          </n-button>
         </div>
       </n-drawer-content>
     </n-drawer>
@@ -265,16 +279,8 @@ onUnmounted(async () => { await unregisterShortcuts() })
 }
 
 .drawer__clear {
-  text-align: center;
   padding: 12px;
-  font-size: 13px;
-  color: var(--n-text-color-3);
-  cursor: pointer;
   border-top: 1px solid var(--n-border-color);
   margin-top: 8px;
-}
-
-.drawer__clear:hover {
-  color: var(--n-primary-color);
 }
 </style>
